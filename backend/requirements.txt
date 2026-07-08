@@ -23,14 +23,15 @@ google-generativeai==0.7.2
 # --- PDF Processing ---
 pymupdf==1.24.7
 
-# --- OCR (PaddleOCR) — optional, backend degrades gracefully if missing ---
-# paddleocr==2.8.1
-# paddlepaddle==3.0.0
+# --- OCR for Image Translation (optional but recommended) ---
+# WARNING: paddlepaddle is ~500 MB. Comment these out if you only need text/PDF translation.
+paddleocr==2.8.1
+paddlepaddle==3.0.0
 Pillow==10.4.0
 
-# --- Image Processing ---
-# opencv-python-headless==4.10.0.84  # optional: only used for image pre-processing
-# numpy==1.26.4                       # optional: pulled in by opencv above
+# --- Image Pre-processing (used by OCR pipeline) ---
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
 
 # --- Utilities ---
 python-dotenv==1.0.1
