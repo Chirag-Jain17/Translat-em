@@ -1,0 +1,78 @@
+# ============================================================
+#  AI Translator Website — .gitignore
+# ============================================================
+
+# ── SECURITY: NEVER commit the real .env ─────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.whl
+
+# ── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# ── Database (auto-created on startup, never commit) ─────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Uploaded files (user data, never commit) ─────────────────
+backend/uploads/
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Node / Frontend ───────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+.npm/
+.yarn/
+
+# ── IDE / Editor ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+desktop.ini
+$RECYCLE.BIN/
+
+# ── Testing / Coverage ────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/

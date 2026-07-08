@@ -1,0 +1,38 @@
+# ============================================================
+#  AI Translator Website — Python Backend Requirements
+#  Install with:
+#    .venv\Scripts\pip.exe install -r backend\requirements.txt
+# ============================================================
+
+# --- Web Framework ---
+fastapi==0.111.1
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+
+# --- Database ---
+sqlalchemy==2.0.31
+aiosqlite==0.20.0
+
+# --- Data Validation ---
+pydantic==2.8.2
+pydantic-settings==2.3.4
+
+# --- Google Gemini AI ---
+google-generativeai==0.7.2
+
+# --- PDF Processing ---
+pymupdf==1.24.7
+
+# --- OCR (PaddleOCR) — optional, backend degrades gracefully if missing ---
+# paddleocr==2.8.1
+# paddlepaddle==3.0.0
+Pillow==10.4.0
+
+# --- Image Processing ---
+# opencv-python-headless==4.10.0.84  # optional: only used for image pre-processing
+# numpy==1.26.4                       # optional: pulled in by opencv above
+
+# --- Utilities ---
+python-dotenv==1.0.1
+aiofiles==23.2.1
+httpx==0.27.0
