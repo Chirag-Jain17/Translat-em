@@ -28,6 +28,7 @@ _CANDIDATE_MODELS = [
     "gemini-2.0-flash-lite",
     "gemini-2.0-flash",
     "gemini-1.5-pro-latest",
+    "gemini-2.5-flash",
 ]
 
 _GEN_CONFIG = genai.types.GenerationConfig(
@@ -107,7 +108,8 @@ Rules you MUST follow without exception:
 3. Preserve ALL formatting tokens such as Markdown bold (**text**), italics (*text*), and code blocks (```).
 4. Output ONLY the translated text. Do NOT include any preamble, commentary, notes, apologies, explanations, or the original source text.
 5. If the source language is set to "auto", detect the language automatically before translating.
-6. Proper nouns, brand names, and technical acronyms should remain unchanged unless a universally recognised target-language equivalent exists."""
+6. Proper nouns, brand names, and technical acronyms should remain unchanged unless a universally recognised target-language equivalent exists.
+7. If the source text contains [Dialogue N] labels (e.g. [Dialogue 1], [Dialogue 2]), these mark separate speech bubbles extracted from an image. You MUST keep each label in the output at the same position, translating only the text beneath each label. Never merge or reorder dialogues."""
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

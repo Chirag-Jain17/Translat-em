@@ -126,7 +126,7 @@ def _process_file_translation(translation_id: int, file_path: str, file_type: st
         if file_type == "pdf":
             source_text = pdf_engine.extract_text_from_pdf(file_path)
         else:
-            source_text = vision_engine.extract_text_from_image(file_path)
+            source_text = vision_engine.extract_text_from_image(file_path, source_language=source_language)
 
         record.source_text = source_text
 
