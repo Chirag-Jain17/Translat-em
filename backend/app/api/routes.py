@@ -52,6 +52,7 @@ from app.schemas.schemas import (
     VisibilityUpdateRequest,
 )
 from app.services import llm_engine, pdf_engine, vision_engine
+from app.core.auth import get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +180,7 @@ def _process_file_translation(translation_id: int, file_path: str, file_type: st
 def translate_text_endpoint(
     payload: TextTranslationRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ) -> TranslationResponse:
     """Translate a block of user-supplied text and persist the result."""
     try:
@@ -195,7 +197,7 @@ def translate_text_endpoint(
 
     record = Translation(
         title=payload.title,
-        author=payload.author,
+        author=payload.author if not current_user else current_user.username,
         original_language=payload.source_language,
         translated_language=payload.target_language,
         is_public=payload.is_public,
@@ -203,6 +205,7 @@ def translate_text_endpoint(
         source_text=payload.text,
         result_text=result_text,
         status="done",
+        user_id=current_user.id if current_user else None,
     )
     db.add(record)
     db.commit()
@@ -228,6 +231,7 @@ def translate_file_endpoint(
     author: str = Form(default="anonymous"),
     is_public: bool = Form(default=True),
     db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ) -> TranslationResponse:
     """
     Accept an image or PDF upload.  Returns 202 immediately with a 'pending'
@@ -240,13 +244,14 @@ def translate_file_endpoint(
     # Create a DB record in 'pending' state
     record = Translation(
         title=title,
-        author=author,
+        author=author if not current_user else current_user.username,
         original_language=source_language,
         translated_language=target_language,
         is_public=is_public,
         file_path=str(dest_path),
         file_type=file_type,
         status="pending",
+        user_id=current_user.id if current_user else None,
     )
     db.add(record)
     db.commit()

@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.api.auth_routes import router as auth_router
 from app.core.config import settings
 from app.models.database import create_db_and_tables
 
@@ -85,6 +86,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
 
 # ── Register API router ───────────────────────────────────────────────────────
 app.include_router(router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 
 # ── Root health check ─────────────────────────────────────────────────────────

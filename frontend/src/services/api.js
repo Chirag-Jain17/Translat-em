@@ -3,18 +3,28 @@
  *
  * Centralised API client.
  * All fetch calls in the app use the functions defined here
- * so the base URL is defined in exactly one place.
+ * so the base URL and auth token are handled in exactly one place.
  */
 
 const API_BASE_URL = "http://localhost:8000";
+const TOKEN_KEY    = "ai_translator_token";
 
 // ── Generic helper ────────────────────────────────────────────────────────────
 async function request(path, options = {}) {
-  const url = `${API_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...options.headers },
-    ...options,
-  });
+  const url   = `${API_BASE_URL}${path}`;
+  const token = localStorage.getItem(TOKEN_KEY);
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  // Attach bearer token when available
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { ...options, headers });
 
   if (res.status === 204) return null; // No content (DELETE)
 
@@ -26,34 +36,48 @@ async function request(path, options = {}) {
   return data;
 }
 
+// ── File upload helper (multipart — browser sets Content-Type boundary) ────────
+async function requestFile(path, formData) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+// ── Auth endpoints ────────────────────────────────────────────────────────────
+
+export const authRegister = (payload) =>
+  request("/api/auth/register", { method: "POST", body: JSON.stringify(payload) });
+
+export const authLogin = (payload) =>
+  request("/api/auth/login", { method: "POST", body: JSON.stringify(payload) });
+
+export const authMe = () => request("/api/auth/me");
+
 // ── Translation endpoints ─────────────────────────────────────────────────────
 
 export const translateText = (payload) =>
-  request("/api/translate/text", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  request("/api/translate/text", { method: "POST", body: JSON.stringify(payload) });
 
-export const uploadFile = (formData) =>
-  fetch(`${API_BASE_URL}/api/translate/file`, {
-    method: "POST",
-    body: formData,         // Do NOT set Content-Type header — browser handles multipart boundary
-  }).then(async (res) => {
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
-    return data;
-  });
+export const uploadFile = (formData) => requestFile("/api/translate/file", formData);
 
-export const getTranslationStatus = (id) =>
-  request(`/api/translate/${id}/status`);
+export const getTranslationStatus = (id) => request(`/api/translate/${id}/status`);
 
-export const getTranslation = (id) =>
-  request(`/api/translate/${id}`);
+export const getTranslation = (id) => request(`/api/translate/${id}`);
 
 export const updateVisibility = (id, is_public) =>
   request(`/api/translate/${id}/visibility`, {
     method: "PATCH",
-    body: JSON.stringify({ is_public }),
+    body:   JSON.stringify({ is_public }),
   });
 
 export const deleteTranslation = (id) =>
@@ -73,13 +97,11 @@ export const exploreTranslations = ({ search, filter_by, sort_by, page, page_siz
 
 // ── User / Profile endpoints ──────────────────────────────────────────────────
 
-export const getProfile = (username) =>
-  request(`/api/profile/${username}`);
+export const getProfile = (username) => request(`/api/profile/${username}`);
 
 export const createUser = (payload) =>
   request("/api/users", { method: "POST", body: JSON.stringify(payload) });
 
-export const getUser = (username) =>
-  request(`/api/users/${username}`);
+export const getUser = (username) => request(`/api/users/${username}`);
 
 export { API_BASE_URL };

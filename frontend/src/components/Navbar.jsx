@@ -2,9 +2,7 @@
  * src/components/Navbar.jsx
  *
  * Glassmorphism sticky navigation bar.
- * Props:
- *   currentPage : string — one of 'home' | 'explore' | 'profile'
- *   navigate    : (page: string) => void
+ * Shows user avatar + username when logged in, Sign In / Register when logged out.
  */
 
 import { useState } from "react";
@@ -15,7 +13,11 @@ import {
   Menu,
   X,
   Sparkles,
+  LogIn,
+  LogOut,
+  UserPlus,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 const NAV_LINKS = [
   { id: "home",    label: "Studio",  Icon: Languages },
@@ -24,12 +26,24 @@ const NAV_LINKS = [
 ];
 
 export default function Navbar({ currentPage, navigate }) {
+  const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleNav = (page) => {
     navigate(page);
     setMobileOpen(false);
   };
+
+  const handleLogout = () => {
+    logout();
+    navigate("login");
+    setMobileOpen(false);
+  };
+
+  // Initials avatar from username
+  const initials = user?.username
+    ? user.username.slice(0, 2).toUpperCase()
+    : "?";
 
   return (
     <header className="glass-nav sticky top-0 z-50">
@@ -81,19 +95,54 @@ export default function Navbar({ currentPage, navigate }) {
             })}
           </nav>
 
-          {/* ── Desktop CTA ── */}
+          {/* ── Desktop right side ── */}
           <div className="hidden md:flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-medium text-emerald-700">API Online</span>
-            </div>
-            <button
-              onClick={() => handleNav("home")}
-              className="btn-primary text-xs px-4 py-2"
-            >
-              <Sparkles size={13} />
-              Translate Now
-            </button>
+            {user ? (
+              /* ── Logged-in state ── */
+              <>
+                <button
+                  onClick={() => handleNav("profile")}
+                  className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100
+                             transition-colors duration-150 group"
+                  title="View profile"
+                >
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center
+                                  text-white text-xs font-bold shadow-sm">
+                    {initials}
+                  </div>
+                  <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">
+                    @{user.username}
+                  </span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="btn-secondary text-xs px-3 py-2 text-red-600 border-red-200
+                             hover:bg-red-50 hover:border-red-300"
+                  title="Sign out"
+                  id="navbar-logout-btn"
+                >
+                  <LogOut size={13} /> Logout
+                </button>
+              </>
+            ) : (
+              /* ── Logged-out state ── */
+              <>
+                <button
+                  onClick={() => handleNav("login")}
+                  className="btn-secondary text-xs px-4 py-2"
+                  id="navbar-signin-btn"
+                >
+                  <LogIn size={13} /> Sign In
+                </button>
+                <button
+                  onClick={() => handleNav("register")}
+                  className="btn-primary text-xs px-4 py-2"
+                  id="navbar-register-btn"
+                >
+                  <UserPlus size={13} /> Register
+                </button>
+              </>
+            )}
           </div>
 
           {/* ── Mobile hamburger ── */}
@@ -131,14 +180,41 @@ export default function Navbar({ currentPage, navigate }) {
                 </button>
               );
             })}
-            <div className="pt-2 pb-1">
-              <button
-                onClick={() => handleNav("home")}
-                className="btn-primary w-full justify-center"
-              >
-                <Sparkles size={14} />
-                Start Translating
-              </button>
+
+            <div className="pt-2 pb-1 border-t border-slate-100 mt-2 space-y-2">
+              {user ? (
+                <>
+                  <div className="flex items-center gap-3 px-4 py-2">
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center
+                                    text-white text-xs font-bold">
+                      {initials}
+                    </div>
+                    <span className="text-sm font-medium text-slate-700">@{user.username}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium
+                               text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut size={17} /> Sign Out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleNav("login")}
+                    className="btn-secondary w-full justify-center"
+                  >
+                    <LogIn size={14} /> Sign In
+                  </button>
+                  <button
+                    onClick={() => handleNav("register")}
+                    className="btn-primary w-full justify-center"
+                  >
+                    <UserPlus size={14} /> Register
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

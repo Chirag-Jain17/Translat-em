@@ -41,7 +41,7 @@ env/
 *.sqlite3
 
 # ── Uploaded files (user data, never commit) ─────────────────
-backend/uploads/
+uploads/
 
 # ── Logs ─────────────────────────────────────────────────────
 *.log

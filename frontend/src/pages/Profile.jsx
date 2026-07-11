@@ -3,17 +3,15 @@
  *
  * Page 3: User Profile / Dashboard
  *
- * Sections:
- *   1. Profile Header — Avatar, username, usage meter
- *   2. Translation History — Flex rows with:
- *        - Document title + language pills
- *        - Timestamp + status badge
- *        - Public/Private toggle (PATCH /api/translate/{id}/visibility)
- *        - Delete button (DELETE /api/translate/{id})
- *   3. Empty state
+ * Behaviour
+ * ─────────
+ * • Loads the logged-in user's own profile on mount.
+ * • "Find a user" panel lets you look up any username — but the result is
+ *   shown read-only (no edit / delete controls, public translations only).
+ * • Edit controls (visibility toggle, delete) are only shown on your OWN profile.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   User,
   Languages,
@@ -29,17 +27,17 @@ import {
   AlertCircle,
   RefreshCw,
   ArrowRight,
-  BarChart2,
   Calendar,
-  CheckCircle2,
-  Settings,
   Sparkles,
+  Search,
+  ChevronLeft,
+  BookOpen,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import ReadMoreModal from "../components/ReadMoreModal";
 
 const API_BASE_URL = "http://localhost:8000";
-
-// ── Demo user ─────────────────────────────────────────────────────────────────
-const DEMO_USERNAME = "anonymous";
+const TOKEN_KEY    = "ai_translator_token";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const langLabel = (code) => {
@@ -57,6 +55,11 @@ const fileTypeIcon = (type) => {
   if (type === "image") return <Image    size={15} className="text-violet-500" />;
   return                       <File     size={15} className="text-slate-400" />;
 };
+
+function authHeaders() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 function StatusBadge({ status }) {
   const map = {
@@ -98,7 +101,7 @@ function ToggleSwitch({ checked, onChange, disabled }) {
   );
 }
 
-// ── AvatarInitial ────────────────────────────────────────────────────────────
+// ── AvatarInitial ─────────────────────────────────────────────────────────────
 function AvatarInitial({ username, size = "xl" }) {
   const initial = (username || "?")[0].toUpperCase();
   const sizeCls = {
@@ -116,7 +119,7 @@ function AvatarInitial({ username, size = "xl" }) {
 
 // ── UsageMeter ────────────────────────────────────────────────────────────────
 function UsageMeter({ count, limit = 50 }) {
-  const pct = Math.min((count / limit) * 100, 100);
+  const pct   = Math.min((count / limit) * 100, 100);
   const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-500" : "bg-emerald-500";
 
   return (
@@ -131,18 +134,18 @@ function UsageMeter({ count, limit = 50 }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-xs text-slate-400">
-        {limit - count} free translations remaining
-      </p>
+      <p className="text-xs text-slate-400">{limit - count} free translations remaining</p>
     </div>
   );
 }
 
 // ── HistoryRow ────────────────────────────────────────────────────────────────
-function HistoryRow({ item, onVisibilityChange, onDelete }) {
-  const [toggling, setToggling] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+// isOwner = true  → show edit/delete controls (own profile)
+// isOwner = false → read-only view (looking at another user)
+function HistoryRow({ item, isOwner, onVisibilityChange, onDelete, onReadMore }) {
+  const [toggling,       setToggling]       = useState(false);
+  const [deleting,       setDeleting]       = useState(false);
+  const [confirmDelete,  setConfirmDelete]  = useState(false);
 
   const handleToggle = async () => {
     setToggling(true);
@@ -150,9 +153,9 @@ function HistoryRow({ item, onVisibilityChange, onDelete }) {
       const res = await fetch(
         `${API_BASE_URL}/api/translate/${item.id}/visibility`,
         {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_public: !item.is_public }),
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body:    JSON.stringify({ is_public: !item.is_public }),
         }
       );
       if (!res.ok) throw new Error("Toggle failed");
@@ -170,11 +173,10 @@ function HistoryRow({ item, onVisibilityChange, onDelete }) {
     setDeleting(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/translate/${item.id}`, {
-        method: "DELETE",
+        method:  "DELETE",
+        headers: authHeaders(),
       });
-      if (res.ok || res.status === 204) {
-        onDelete(item.id);
-      }
+      if (res.ok || res.status === 204) onDelete(item.id);
     } catch (e) {
       console.error(e);
     } finally {
@@ -224,10 +226,14 @@ function HistoryRow({ item, onVisibilityChange, onDelete }) {
               <Eye size={11} />
               {(item.view_count || 0).toLocaleString()} views
             </span>
-            {item.snippet && (
-              <p className="text-xs text-slate-400 italic truncate max-w-[200px] hidden md:block">
-                "{item.snippet}"
-              </p>
+            {/* Visibility badge (read-only indicator for non-owner) */}
+            {!isOwner && (
+              <span className="flex items-center gap-1 text-xs text-slate-400">
+                {item.is_public
+                  ? <><Globe size={11} className="text-emerald-500" /> Public</>
+                  : <><Lock  size={11} className="text-slate-400"  /> Private</>
+                }
+              </span>
             )}
           </div>
         </div>
@@ -235,46 +241,56 @@ function HistoryRow({ item, onVisibilityChange, onDelete }) {
 
       {/* ── Right: controls ── */}
       <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-
-        {/* Public / Private toggle */}
-        <div className="flex items-center gap-2">
-          {item.is_public
-            ? <Globe size={13} className="text-emerald-500" />
-            : <Lock  size={13} className="text-slate-400"  />
-          }
-          <ToggleSwitch
-            checked={item.is_public}
-            onChange={handleToggle}
-            disabled={toggling}
-          />
-          {toggling && <Loader2 size={12} className="animate-spin text-slate-400" />}
-          <span className="text-xs text-slate-500 w-12 font-medium">
-            {item.is_public ? "Public" : "Private"}
-          </span>
-        </div>
-
-        {/* Delete button */}
         <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className={`
-            inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-            transition-all duration-150
-            ${confirmDelete
-              ? "bg-red-600 text-white hover:bg-red-700"
-              : "text-red-500 hover:bg-red-50 hover:text-red-700"
-            }
-            ${deleting ? "opacity-50 cursor-not-allowed" : ""}
-          `}
-          title={confirmDelete ? "Click again to confirm deletion" : "Delete translation"}
-          onBlur={() => setConfirmDelete(false)}
+          onClick={() => onReadMore(item)}
+          className="btn-secondary text-xs px-3 py-1.5 gap-1.5"
         >
-          {deleting
-            ? <Loader2 size={12} className="animate-spin" />
-            : <Trash2  size={12} />
-          }
-          {confirmDelete ? "Confirm?" : "Delete"}
+          <BookOpen size={12} /> Read More
         </button>
+
+        {isOwner && (
+          <>
+          {/* Public / Private toggle */}
+          <div className="flex items-center gap-2">
+            {item.is_public
+              ? <Globe size={13} className="text-emerald-500" />
+              : <Lock  size={13} className="text-slate-400"  />
+            }
+            <ToggleSwitch
+              checked={item.is_public}
+              onChange={handleToggle}
+              disabled={toggling}
+            />
+            {toggling && <Loader2 size={12} className="animate-spin text-slate-400" />}
+            <span className="text-xs text-slate-500 w-12 font-medium">
+              {item.is_public ? "Public" : "Private"}
+            </span>
+          </div>
+
+          {/* Delete button */}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className={`
+              inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+              transition-all duration-150
+              ${confirmDelete
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "text-red-500 hover:bg-red-50 hover:text-red-700"
+              }
+              ${deleting ? "opacity-50 cursor-not-allowed" : ""}
+            `}
+            title={confirmDelete ? "Click again to confirm" : "Delete translation"}
+            onBlur={() => setConfirmDelete(false)}
+          >
+            {deleting
+              ? <Loader2 size={12} className="animate-spin" />
+              : <Trash2  size={12} />
+            }
+            {confirmDelete ? "Confirm?" : "Delete"}
+          </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -282,27 +298,64 @@ function HistoryRow({ item, onVisibilityChange, onDelete }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Profile({ navigate }) {
-  const [profile, setProfile] = useState(null);
+  const { user: authUser, logout } = useAuth();
+
+  const [profile,      setProfile]      = useState(null);
   const [translations, setTranslations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [username, setUsername] = useState(DEMO_USERNAME);
-  const [lookupInput, setLookupInput] = useState("");
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
+
+  // lookupUsername: null = viewing own profile, string = viewing another user
+  const [lookupUsername, setLookupUsername] = useState(null);
+  const [lookupInput,    setLookupInput]    = useState("");
+  const [lookupLoading,  setLookupLoading]  = useState(false);
+  const [lookupError,    setLookupError]    = useState(null);
+
+  const [selectedItem, setSelectedItem] = useState(null);
+
   const [stats, setStats] = useState({ total: 0, public: 0, private: 0, done: 0 });
 
-  // ── Fetch profile ─────────────────────────────────────────────────────────
-  const fetchProfile = async (uname) => {
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+
+  // Are we showing our own profile?
+  const isOwnProfile = lookupUsername === null;
+
+  const handleDeleteAccount = async () => {
+    if (!confirmDeleteAccount) {
+      setConfirmDeleteAccount(true);
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to delete account");
+      logout();
+      navigate("login"); // redirect to login or home
+    } catch (err) {
+      setError(err.message);
+      setDeletingAccount(false);
+      setConfirmDeleteAccount(false);
+    }
+  };
+
+  // ── Fetch own profile ─────────────────────────────────────────────────────
+  const fetchOwnProfile = useCallback(async () => {
+    if (!authUser) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/profile/${uname}`);
-      if (!res.ok) throw new Error(`Failed to load profile for "${uname}".`);
+      const res = await fetch(`${API_BASE_URL}/api/profile/${authUser.username}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to load your profile.");
       const data = await res.json();
       setProfile(data.user);
       const list = data.translations || [];
       setTranslations(list);
-
-      // Compute stats
       setStats({
         total:   list.length,
         public:  list.filter((t) => t.is_public).length,
@@ -314,11 +367,14 @@ export default function Profile({ navigate }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authUser]);
 
-  useEffect(() => { fetchProfile(username); }, [username]);
+  // Load own profile on mount / when auth user changes
+  useEffect(() => {
+    fetchOwnProfile();
+  }, [fetchOwnProfile]);
 
-  // ── Handle visibility update ──────────────────────────────────────────────
+  // ── Handlers for own-profile mutations ───────────────────────────────────
   const handleVisibilityChange = (id, newPublic) => {
     setTranslations((prev) =>
       prev.map((t) => (t.id === id ? { ...t, is_public: newPublic } : t))
@@ -330,41 +386,99 @@ export default function Profile({ navigate }) {
     }));
   };
 
-  // ── Handle delete ─────────────────────────────────────────────────────────
   const handleDelete = (id) => {
     setTranslations((prev) => prev.filter((t) => t.id !== id));
     setStats((prev) => ({ ...prev, total: prev.total - 1 }));
   };
 
-  // ── Lookup a different user ───────────────────────────────────────────────
-  const handleLookup = (e) => {
+  // ── Lookup another user (read-only) ──────────────────────────────────────
+  const [lookupProfile,      setLookupProfile]      = useState(null);
+  const [lookupTranslations, setLookupTranslations] = useState([]);
+
+  const handleLookup = async (e) => {
     e.preventDefault();
-    if (lookupInput.trim()) {
-      setUsername(lookupInput.trim());
+    const target = lookupInput.trim();
+    if (!target) return;
+
+    // If they searched for themselves, just highlight own profile
+    if (authUser && target.toLowerCase() === authUser.username.toLowerCase()) {
       setLookupInput("");
+      return;
+    }
+
+    setLookupLoading(true);
+    setLookupError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/profile/${target}`);
+      if (!res.ok) throw new Error(`User "@${target}" not found.`);
+      const data = await res.json();
+      setLookupProfile(data.user);
+      // Only show PUBLIC translations for other users
+      setLookupTranslations((data.translations || []).filter((t) => t.is_public));
+      setLookupUsername(target);
+      setLookupInput("");
+    } catch (e) {
+      setLookupError(e.message);
+    } finally {
+      setLookupLoading(false);
     }
   };
+
+  const returnToOwnProfile = () => {
+    setLookupUsername(null);
+    setLookupProfile(null);
+    setLookupTranslations([]);
+    setLookupError(null);
+  };
+
+  // ── Decide what to display ────────────────────────────────────────────────
+  const displayProfile      = isOwnProfile ? profile      : lookupProfile;
+  const displayTranslations = isOwnProfile ? translations : lookupTranslations;
+  const displayLoading      = isOwnProfile ? loading      : lookupLoading;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
 
       {/* ── Page header ── */}
       <div className="animate-slide-up">
-        <h1 className="font-serif text-4xl font-bold text-slate-900">Profile</h1>
-        <p className="text-slate-500 mt-1">
-          Manage your translations, control visibility, and track your activity.
-        </p>
+        {isOwnProfile ? (
+          <>
+            <h1 className="font-serif text-4xl font-bold text-slate-900">My Profile</h1>
+            <p className="text-slate-500 mt-1">
+              Manage your translations, control visibility, and track your activity.
+            </p>
+          </>
+        ) : (
+          <div className="flex items-start gap-4">
+            <button
+              onClick={returnToOwnProfile}
+              className="btn-secondary text-sm mt-1 shrink-0"
+              id="profile-back-btn"
+            >
+              <ChevronLeft size={15} /> My Profile
+            </button>
+            <div>
+              <h1 className="font-serif text-4xl font-bold text-slate-900">
+                @{lookupUsername}
+              </h1>
+              <p className="text-slate-500 mt-1 flex items-center gap-1.5">
+                <Eye size={13} className="text-slate-400" />
+                Viewing public profile — read-only
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ── Error ── */}
-      {error && (
+      {/* ── Error (own profile) ── */}
+      {isOwnProfile && error && (
         <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
           <AlertCircle size={18} className="shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-sm">Error</p>
             <p className="text-sm text-red-600 mt-0.5">{error}</p>
           </div>
-          <button onClick={() => fetchProfile(username)} className="ml-auto">
+          <button onClick={fetchOwnProfile} className="ml-auto">
             <RefreshCw size={15} className="text-red-400 hover:text-red-700" />
           </button>
         </div>
@@ -372,7 +486,7 @@ export default function Profile({ navigate }) {
 
       {/* ══════════ PROFILE HEADER ══════════ */}
       <div className="card p-6 sm:p-8 animate-slide-up">
-        {loading && !profile ? (
+        {displayLoading && !displayProfile ? (
           <div className="flex items-center gap-5 animate-pulse">
             <div className="w-20 h-20 rounded-2xl bg-slate-200" />
             <div className="space-y-2">
@@ -381,93 +495,131 @@ export default function Profile({ navigate }) {
               <div className="h-3 w-28 bg-slate-100 rounded" />
             </div>
           </div>
-        ) : profile ? (
+        ) : displayProfile ? (
           <div className="flex flex-col sm:flex-row gap-6">
             {/* Avatar */}
             <div className="shrink-0">
-              <AvatarInitial username={profile.username} size="xl" />
+              <AvatarInitial username={displayProfile.username} size="xl" />
             </div>
 
             {/* Info */}
             <div className="flex-1 space-y-4">
               <div>
-                <h2 className="font-serif font-bold text-2xl text-slate-900">
-                  @{profile.username}
-                </h2>
-                <p className="text-slate-500 text-sm mt-0.5">{profile.email}</p>
-                {profile.created_at && (
+                <div className="flex items-center gap-3">
+                  <h2 className="font-serif font-bold text-2xl text-slate-900">
+                    @{displayProfile.username}
+                  </h2>
+                  {!isOwnProfile && (
+                    <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full font-medium">
+                      Public profile
+                    </span>
+                  )}
+                </div>
+                {/* Only show email on own profile */}
+                {isOwnProfile && (
+                  <p className="text-slate-500 text-sm mt-0.5">{displayProfile.email}</p>
+                )}
+                {displayProfile.created_at && (
                   <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
                     <Calendar size={11} />
                     Member since{" "}
-                    {new Date(profile.created_at).toLocaleDateString("en-US", {
+                    {new Date(displayProfile.created_at).toLocaleDateString("en-US", {
                       month: "long", year: "numeric",
                     })}
                   </p>
                 )}
               </div>
 
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: "Total",   value: stats.total,   color: "text-slate-700", bg: "bg-slate-50"    },
-                  { label: "Done",    value: stats.done,    color: "text-emerald-700", bg: "bg-emerald-50" },
-                  { label: "Public",  value: stats.public,  color: "text-indigo-700",  bg: "bg-indigo-50"  },
-                  { label: "Private", value: stats.private, color: "text-slate-500",   bg: "bg-slate-50"   },
-                ].map(({ label, value, color, bg }) => (
-                  <div key={label} className={`${bg} rounded-xl p-3 text-center`}>
-                    <p className={`text-2xl font-bold font-serif ${color}`}>{value}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+              {/* Stats — only on own profile */}
+              {isOwnProfile && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total",   value: stats.total,   color: "text-slate-700",   bg: "bg-slate-50"    },
+                      { label: "Done",    value: stats.done,    color: "text-emerald-700",  bg: "bg-emerald-50"  },
+                      { label: "Public",  value: stats.public,  color: "text-indigo-700",   bg: "bg-indigo-50"   },
+                      { label: "Private", value: stats.private, color: "text-slate-500",    bg: "bg-slate-50"    },
+                    ].map(({ label, value, color, bg }) => (
+                      <div key={label} className={`${bg} rounded-xl p-3 text-center`}>
+                        <p className={`text-2xl font-bold font-serif ${color}`}>{value}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
 
-              {/* Usage meter */}
-              <div className="max-w-sm">
-                <UsageMeter count={stats.total} limit={50} />
-              </div>
+                  <div className="max-w-sm">
+                    <UsageMeter count={stats.total} limit={50} />
+                  </div>
+                </>
+              )}
+
+              {/* Public translation count for other users */}
+              {!isOwnProfile && (
+                <p className="text-sm text-slate-500">
+                  {lookupTranslations.length} public translation{lookupTranslations.length !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
+          </div>
+        ) : !displayLoading && lookupError ? (
+          <div className="flex items-center gap-3 text-red-600">
+            <AlertCircle size={18} />
+            <p className="text-sm">{lookupError}</p>
           </div>
         ) : null}
       </div>
 
-      {/* ── User lookup form ── */}
-      <div className="card p-5 animate-slide-up">
-        <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-          <Settings size={14} className="text-slate-400" />
-          Look up a different user
-        </h3>
-        <form onSubmit={handleLookup} className="flex gap-3">
-          <input
-            type="text"
-            value={lookupInput}
-            onChange={(e) => setLookupInput(e.target.value)}
-            placeholder="Enter username (e.g. anonymous)"
-            className="input flex-1"
-          />
-          <button type="submit" className="btn-primary px-5">
-            Load Profile
-          </button>
-        </form>
-        <p className="text-xs text-slate-400 mt-2">
-          Currently viewing: <strong className="text-slate-600">@{username}</strong>
-        </p>
-      </div>
+      {/* ── Find a user panel (only on own profile) ── */}
+      {isOwnProfile && (
+        <div className="card p-5 animate-slide-up">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <Search size={14} className="text-slate-400" />
+            Find a user
+          </h3>
+          <form onSubmit={handleLookup} className="flex gap-3">
+            <input
+              type="text"
+              value={lookupInput}
+              onChange={(e) => setLookupInput(e.target.value)}
+              placeholder="Enter a username to view their public profile"
+              className="input flex-1"
+              id="profile-lookup-input"
+            />
+            <button
+              type="submit"
+              disabled={lookupLoading}
+              className="btn-primary px-5"
+              id="profile-lookup-btn"
+            >
+              {lookupLoading
+                ? <Loader2 size={14} className="animate-spin" />
+                : <Search size={14} />
+              }
+              {lookupLoading ? "Searching…" : "View"}
+            </button>
+          </form>
+          {lookupError && (
+            <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+              <AlertCircle size={11} /> {lookupError}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ══════════ TRANSLATION HISTORY ══════════ */}
       <div className="space-y-4 animate-slide-up">
         <div className="flex items-center justify-between">
           <h2 className="font-serif font-bold text-2xl text-slate-900">
-            Translation History
+            {isOwnProfile ? "Translation History" : `@${lookupUsername}'s Public Translations`}
           </h2>
-          <button
-            onClick={() => fetchProfile(username)}
-            className="btn-ghost text-sm"
-          >
-            <RefreshCw size={14} /> Refresh
-          </button>
+          {isOwnProfile && (
+            <button onClick={fetchOwnProfile} className="btn-ghost text-sm">
+              <RefreshCw size={14} /> Refresh
+            </button>
+          )}
         </div>
 
-        {loading ? (
+        {displayLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="card p-4 animate-pulse flex items-center gap-4">
@@ -481,46 +633,48 @@ export default function Profile({ navigate }) {
               </div>
             ))}
           </div>
-        ) : translations.length === 0 ? (
+        ) : displayTranslations.length === 0 ? (
           <div className="card p-12 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
               <Languages size={28} className="text-indigo-400" />
             </div>
             <h3 className="font-serif font-bold text-xl text-slate-700 mb-2">
-              No translations yet
+              {isOwnProfile ? "No translations yet" : "No public translations"}
             </h3>
             <p className="text-sm text-slate-400 mb-5 max-w-sm">
-              Head over to the Translation Studio and create your first translation.
+              {isOwnProfile
+                ? "Head over to the Translation Studio and create your first translation."
+                : `@${lookupUsername} hasn't made any public translations yet.`
+              }
             </p>
-            <button
-              onClick={() => navigate("home")}
-              className="btn-primary"
-            >
-              <Sparkles size={15} /> Open Studio
-            </button>
+            {isOwnProfile && (
+              <button onClick={() => navigate("home")} className="btn-primary">
+                <Sparkles size={15} /> Open Studio
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
-            {translations.map((item) => (
+            {displayTranslations.map((item) => (
               <HistoryRow
                 key={item.id}
                 item={item}
+                isOwner={isOwnProfile}
                 onVisibilityChange={handleVisibilityChange}
                 onDelete={handleDelete}
+                onReadMore={setSelectedItem}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* ── CTA ── */}
-      {!loading && translations.length > 0 && (
+      {/* ── CTA (own profile only) ── */}
+      {isOwnProfile && !loading && translations.length > 0 && (
         <div className="card p-6 bg-gradient-to-r from-indigo-50 to-violet-50 border-indigo-100
                         flex flex-col sm:flex-row items-center justify-between gap-4 animate-slide-up">
           <div>
-            <h3 className="font-serif font-bold text-lg text-slate-900">
-              Keep translating!
-            </h3>
+            <h3 className="font-serif font-bold text-lg text-slate-900">Keep translating!</h3>
             <p className="text-sm text-slate-500 mt-0.5">
               {50 - stats.total > 0
                 ? `You have ${50 - stats.total} free translations left.`
@@ -532,6 +686,48 @@ export default function Profile({ navigate }) {
             <Sparkles size={15} /> New Translation
           </button>
         </div>
+      )}
+
+      {/* ── Danger Zone (own profile only) ── */}
+      {isOwnProfile && !loading && (
+        <div className="card p-6 border-red-100 bg-red-50/30 flex flex-col sm:flex-row items-center justify-between gap-4 animate-slide-up">
+          <div>
+            <h3 className="font-serif font-bold text-lg text-red-900">Danger Zone</h3>
+            <p className="text-sm text-red-600/80 mt-0.5">
+              Permanently delete your account and all associated translations. This action cannot be undone.
+            </p>
+          </div>
+          <button
+            onClick={handleDeleteAccount}
+            disabled={deletingAccount}
+            onBlur={() => setConfirmDeleteAccount(false)}
+            className={`
+              shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold shadow-sm
+              transition-all duration-150
+              ${confirmDeleteAccount
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "bg-white text-red-600 border border-red-200 hover:bg-red-50 hover:border-red-300"
+              }
+              ${deletingAccount ? "opacity-50 cursor-not-allowed" : ""}
+            `}
+          >
+            {deletingAccount ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Trash2 size={15} />
+            )}
+            {confirmDeleteAccount ? "Are you sure?" : "Delete Account"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Modal ── */}
+      {selectedItem && (
+        <ReadMoreModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          API_BASE_URL={API_BASE_URL}
+        />
       )}
     </div>
   );

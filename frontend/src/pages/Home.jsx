@@ -13,6 +13,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   FileText,
   Image,
@@ -135,6 +136,8 @@ function CopyButton({ text }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Home({ navigate }) {
+  const { user } = useAuth();
+
   // ── Mode: 'text' | 'file' ──
   const [mode, setMode] = useState(null); // null = not yet chosen
 
@@ -143,8 +146,10 @@ export default function Home({ navigate }) {
   const [sourceLang, setSourceLang] = useState("auto");
   const [targetLang, setTargetLang] = useState("en");
   const [title, setTitle] = useState("");
-  const [author, setAuthor] = useState("anonymous");
   const [isPublic, setIsPublic] = useState(true);
+
+  // Derived: always use logged-in username as author
+  const author = user?.username ?? "anonymous";
 
   // ── File mode state ──
   const [file, setFile] = useState(null);
