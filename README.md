@@ -1,6 +1,3 @@
-> [!WARNING]
-> **🚧 Work in Progress** — The frontend and backend are both built and functional, but the project is still being configured and tested. Some features may not work as expected. A stable release is coming soon.
-
 # 🌐 AI Translator Website
 
 A full-stack, AI-powered translation web application built with **FastAPI** and **React**. Translate plain text, documents (PDF), and images (OCR) into 100+ languages powered by a state-of-the-art large language model — all running locally on your machine.
@@ -21,10 +18,11 @@ A full-stack, AI-powered translation web application built with **FastAPI** and 
 | **PDF Translation** | Upload a PDF — the app extracts the text and translates it |
 | **Image / OCR Translation** | Upload an image with text — OCR extracts it before translating |
 | **Auto Language Detection** | Leave source set to "auto" and the AI detects the language |
+| **Google OAuth Login** | Secure, 1-click sign-up and authentication using Google accounts |
 | **Public Explore Feed** | Browse publicly shared translations with search, filter, and sort |
-| **User Profiles** | Personal translation history dashboard with usage stats |
+| **User Profiles** | Personal translation history dashboard with usage stats and account deletion |
 | **Visibility Toggle** | Make any translation public or keep it private |
-| **Async Processing** | File uploads are processed in the background; UI polls for completion |
+| **Async Processing** | File uploads are processed in the background with a visual progress bar |
 | **Smart Model Fallback** | Automatically probes available AI models at startup and uses the best one for your API key |
 
 ---
