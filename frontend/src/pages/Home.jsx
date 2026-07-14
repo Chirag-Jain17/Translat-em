@@ -146,7 +146,7 @@ export default function Home({ navigate }) {
   const [sourceLang, setSourceLang] = useState("auto");
   const [targetLang, setTargetLang] = useState("en");
   const [title, setTitle] = useState("");
-  const [isPublic, setIsPublic] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
 
   // Derived: always use logged-in username as author
   const author = user?.username ?? "anonymous";
@@ -163,6 +163,7 @@ export default function Home({ navigate }) {
 
   // ── Polling state for async file jobs ──
   const [pollingId, setPollingId] = useState(null);
+  const [progress, setProgress] = useState(0);
   const pollingRef = useRef(null);
 
   // Clear polling on unmount
@@ -180,6 +181,11 @@ export default function Home({ navigate }) {
         const res = await fetch(`${API_BASE_URL}/api/translate/${id}/status`);
         if (!res.ok) return;
         const data = await res.json();
+        
+        if (data.progress !== undefined) {
+          setProgress(data.progress);
+        }
+
         if (data.status === "done" || data.status === "error") {
           clearInterval(pollingRef.current);
           setPollingId(null);
@@ -212,11 +218,16 @@ export default function Home({ navigate }) {
     setLoading(true);
     setResult(null);
     setError(null);
+    setProgress(0);
 
     try {
+      const token = localStorage.getItem("ai_translator_token");
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch(`${API_BASE_URL}/api/translate/text`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: headers,
         body: JSON.stringify({
           text: sourceText,
           source_language: sourceLang,
@@ -251,6 +262,7 @@ export default function Home({ navigate }) {
     setLoading(true);
     setResult(null);
     setError(null);
+    setProgress(0);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -261,8 +273,13 @@ export default function Home({ navigate }) {
     formData.append("is_public", isPublic.toString());
 
     try {
+      const token = localStorage.getItem("ai_translator_token");
+      const headers = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch(`${API_BASE_URL}/api/translate/file`, {
         method: "POST",
+        headers: headers,
         body: formData,
       });
       const data = await res.json();
@@ -643,21 +660,38 @@ The AI will preserve paragraph breaks, bullet points, headings, and all formatti
 
           {/* ── Loading state detail ── */}
           {loading && (
-            <div className="card p-6 flex items-center gap-4 animate-fade-in border-indigo-100">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                <Loader2 size={20} className="text-indigo-600 animate-spin" />
+            <div className="card p-6 flex flex-col gap-4 animate-fade-in border-indigo-100">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                  <Loader2 size={20} className="text-indigo-600 animate-spin" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800 text-sm">
+                    {pollingId ? "Extracting text & translating…" : "Translating your text…"}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {pollingId
+                      ? "OCR + AI translation is running in the background. Checking every 2.5s…"
+                      : "Our AI engine is processing your request. This may take a few seconds."
+                    }
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-slate-800 text-sm">
-                  {pollingId ? "Extracting text & translating…" : "Translating your text…"}
-                </p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {pollingId
-                    ? "OCR + AI translation is running in the background. Checking every 2.5s…"
-                    : "Our AI engine is processing your request. This may take a few seconds."
-                  }
-                </p>
-              </div>
+              
+              {pollingId && (
+                <div className="w-full mt-2">
+                  <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
+                    <span>Translation Progress</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-indigo-600 h-2 rounded-full transition-all duration-500 ease-out" 
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

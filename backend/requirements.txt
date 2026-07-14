@@ -16,6 +16,7 @@ aiosqlite==0.20.0
 # --- Data Validation ---
 pydantic==2.8.2
 pydantic-settings==2.3.4
+email-validator==2.2.0
 
 # --- Google Gemini AI ---
 google-generativeai==0.7.2
@@ -23,6 +24,7 @@ google-generativeai==0.7.2
 # --- Authentication ---
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
+google-auth==2.31.0
 
 # --- PDF Processing ---
 pymupdf==1.24.7

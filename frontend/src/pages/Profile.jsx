@@ -357,7 +357,7 @@ export default function Profile({ navigate }) {
       const list = data.translations || [];
       setTranslations(list);
       setStats({
-        total:   list.length,
+        total:   data.user.translation_count,
         public:  list.filter((t) => t.is_public).length,
         private: list.filter((t) => !t.is_public).length,
         done:    list.filter((t) => t.status === "done").length,
@@ -387,8 +387,18 @@ export default function Profile({ navigate }) {
   };
 
   const handleDelete = (id) => {
-    setTranslations((prev) => prev.filter((t) => t.id !== id));
-    setStats((prev) => ({ ...prev, total: prev.total - 1 }));
+    setTranslations((prev) => {
+      const target = prev.find((t) => t.id === id);
+      if (target) {
+        setStats((s) => ({
+          ...s,
+          public:  target.is_public ? s.public - 1 : s.public,
+          private: !target.is_public ? s.private - 1 : s.private,
+          done:    target.status === "done" ? s.done - 1 : s.done,
+        }));
+      }
+      return prev.filter((t) => t.id !== id);
+    });
   };
 
   // ── Lookup another user (read-only) ──────────────────────────────────────

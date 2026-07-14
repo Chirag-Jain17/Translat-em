@@ -75,6 +75,7 @@ class Translation(Base):
 
     # Status: "pending" | "processing" | "done" | "error"
     status = Column(String(32), default="pending", nullable=False)
+    progress = Column(Integer, default=0, nullable=False)
     error_message = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

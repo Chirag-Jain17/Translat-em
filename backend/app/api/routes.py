@@ -138,11 +138,19 @@ def _process_file_translation(translation_id: int, file_path: str, file_type: st
             return
 
         # ── Step 2: Translate ─────────────────────────────────────────────────
+        def update_progress(p: int):
+            try:
+                record.progress = p
+                db.commit()
+            except Exception as e:
+                logger.error("Failed to update progress: %s", e)
+
         logger.info("Translating %d chars to '%s'…", len(source_text), target_language)
         translated = llm_engine.translate_text(
             text=source_text,
             target_language=target_language,
             source_language=source_language,
+            progress_callback=update_progress,
         )
 
         record.result_text = translated
@@ -151,17 +159,25 @@ def _process_file_translation(translation_id: int, file_path: str, file_type: st
 
     except RuntimeError as exc:
         logger.error("Translation %d failed (RuntimeError): %s", translation_id, exc)
-        db.query(Translation).filter(Translation.id == translation_id).update(
-            {"status": "error", "error_message": str(exc)}
-        )
+        _handle_translation_error(db, translation_id, str(exc))
     except Exception as exc:
         logger.exception("Translation %d failed (unexpected): %s", translation_id, exc)
-        db.query(Translation).filter(Translation.id == translation_id).update(
-            {"status": "error", "error_message": f"Unexpected error: {exc}"}
-        )
+        _handle_translation_error(db, translation_id, f"Unexpected error: {exc}")
     finally:
         db.commit()
         db.close()
+
+def _handle_translation_error(db: Session, translation_id: int, error_message: str):
+    record = db.query(Translation).filter(Translation.id == translation_id).first()
+    if record:
+        record.status = "error"
+        record.error_message = error_message
+        
+        # Give back the quota if it failed
+        if record.user_id:
+            user = db.query(User).filter(User.id == record.user_id).first()
+            if user and user.translation_count > 0:
+                user.translation_count -= 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -208,6 +224,10 @@ def translate_text_endpoint(
         user_id=current_user.id if current_user else None,
     )
     db.add(record)
+    if current_user:
+        user_record = db.query(User).filter(User.id == current_user.id).first()
+        if user_record:
+            user_record.translation_count += 1
     db.commit()
     db.refresh(record)
     return TranslationResponse.model_validate(record)
@@ -254,6 +274,10 @@ def translate_file_endpoint(
         user_id=current_user.id if current_user else None,
     )
     db.add(record)
+    if current_user:
+        user_record = db.query(User).filter(User.id == current_user.id).first()
+        if user_record:
+            user_record.translation_count += 1
     db.commit()
     db.refresh(record)
 
@@ -449,6 +473,7 @@ def get_profile(
     translations = (
         db.query(Translation)
         .filter(Translation.author == username)
+        .filter(Translation.status == "done")
         .order_by(Translation.created_at.desc())
         .all()
     )
@@ -475,7 +500,7 @@ def get_profile(
             "username": user.username,
             "email": user.email,
             "avatar_url": user.avatar_url,
-            "translation_count": len(translations),
+            "translation_count": user.translation_count,
             "created_at": user.created_at.isoformat() if user.created_at else None,
         }
     else:

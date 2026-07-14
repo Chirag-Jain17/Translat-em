@@ -111,7 +111,7 @@ export default function Navbar({ currentPage, navigate }) {
                     {initials}
                   </div>
                   <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">
-                    @{user.username}
+                    {user.username}
                   </span>
                 </button>
                 <button
@@ -189,7 +189,7 @@ export default function Navbar({ currentPage, navigate }) {
                                     text-white text-xs font-bold">
                       {initials}
                     </div>
-                    <span className="text-sm font-medium text-slate-700">@{user.username}</span>
+                    <span className="text-sm font-medium text-slate-700">{user.username}</span>
                   </div>
                   <button
                     onClick={handleLogout}

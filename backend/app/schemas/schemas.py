@@ -34,6 +34,7 @@ class TranslationResponse(BaseModel):
     source_text: Optional[str] = None
     result_text: Optional[str] = None
     status: str
+    progress: int = 0
     error_message: Optional[str] = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -67,6 +68,7 @@ class TranslationStatusResponse(BaseModel):
     """Lightweight polling response for async jobs."""
     id: int
     status: str
+    progress: int = 0
     result_text: Optional[str] = None
     error_message: Optional[str] = None
 

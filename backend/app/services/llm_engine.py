@@ -9,6 +9,7 @@ the first translation request arrives.
 """
 
 import logging
+import time
 from typing import Optional
 
 import google.generativeai as genai
@@ -21,14 +22,10 @@ logger = logging.getLogger(__name__)
 # gemini-1.5-flash has the best free tier (15 RPM / 1M tokens per day).
 # Newer models like gemini-2.0-flash may have quota=0 on free-tier keys.
 _CANDIDATE_MODELS = [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash-002",
-    "gemini-1.5-flash-8b",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-pro-latest",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
     "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
 ]
 
 _GEN_CONFIG = genai.types.GenerationConfig(
@@ -114,10 +111,56 @@ Rules you MUST follow without exception:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _chunk_text(text: str, max_chars: int = 10000) -> list[str]:
+    """
+    Split a large block of text into manageable chunks safely under `max_chars`.
+    Attempts to split by double newlines (paragraphs), then single newlines, then spaces.
+    """
+    chunks = []
+    
+    # First, split by paragraphs
+    paragraphs = text.split("\n\n")
+    
+    current_chunk = ""
+    
+    for p in paragraphs:
+        # If adding this paragraph exceeds the limit
+        if len(current_chunk) + len(p) + 2 > max_chars and current_chunk:
+            chunks.append(current_chunk.strip())
+            current_chunk = ""
+            
+        # If a single paragraph is STILL larger than max_chars, we must split it further
+        if len(p) > max_chars:
+            lines = p.split("\n")
+            for line in lines:
+                if len(current_chunk) + len(line) + 1 > max_chars and current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = ""
+                    
+                if len(line) > max_chars:
+                    # Very long line with no newlines, split by space
+                    words = line.split(" ")
+                    for word in words:
+                        if len(current_chunk) + len(word) + 1 > max_chars and current_chunk:
+                            chunks.append(current_chunk.strip())
+                            current_chunk = ""
+                        current_chunk += word + " "
+                    current_chunk += "\n"
+                else:
+                    current_chunk += line + "\n"
+        else:
+            current_chunk += p + "\n\n"
+            
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+        
+    return chunks
+
 def translate_text(
     text: str,
     target_language: str,
     source_language: str = "auto",
+    progress_callback: Optional[callable] = None,
 ) -> str:
     """
     Translate *text* from *source_language* to *target_language* using Gemini.
@@ -160,48 +203,86 @@ def translate_text(
             f"Translate the following text from {source_language} into {target_language}."
         )
 
-    user_prompt = f"{lang_instruction}\n\n---\n\n{text}"
-
-    try:
-        response = _MODEL.generate_content([_SYSTEM_PROMPT, user_prompt])
-        translated = response.text.strip()
-        logger.info(
-            "Translation complete via %s: %d chars -> %d chars",
-            _MODEL_NAME,
-            len(text),
-            len(translated),
-        )
-        return translated
-
-    except Exception as exc:
-        err_str = str(exc)
-
-        # 429 / quota exceeded: try each fallback model once before giving up
-        if "429" in err_str or "quota" in err_str.lower() or "RESOURCE_EXHAUSTED" in err_str:
-            logger.warning("Quota exceeded on %s — trying fallback models.", _MODEL_NAME)
-            for fallback_name in _CANDIDATE_MODELS:
-                if fallback_name == _MODEL_NAME:
-                    continue
-                try:
-                    fallback = genai.GenerativeModel(
-                        model_name=fallback_name,
-                        generation_config=_GEN_CONFIG,
-                    )
-                    response = fallback.generate_content([_SYSTEM_PROMPT, user_prompt])
-                    translated = response.text.strip()
-                    logger.info("Fallback model %s succeeded.", fallback_name)
-                    return translated
-                except Exception as fb_exc:
-                    logger.warning("Fallback %s also failed: %s", fallback_name, str(fb_exc)[:80])
-
+    chunks = _chunk_text(text, max_chars=10000)
+    translated_chunks = []
+    
+    for i, chunk in enumerate(chunks):
+        user_prompt = f"{lang_instruction}\n\n---\n\n{chunk}"
+        
+        max_retries = 5
+        chunk_translated = False
+        
+        for attempt in range(max_retries):
+            try:
+                response = _MODEL.generate_content([_SYSTEM_PROMPT, user_prompt])
+                translated_chunks.append(response.text.strip())
+                chunk_translated = True
+                
+                if progress_callback:
+                    progress = int(((i + 1) / len(chunks)) * 100)
+                    progress_callback(progress)
+                
+                # Sleep briefly between successful chunks to avoid bursting quota
+                if i < len(chunks) - 1:
+                    time.sleep(5)
+                    
+                break  # success, exit retry loop
+                
+            except Exception as exc:
+                err_str = str(exc)
+                if "429" in err_str or "quota" in err_str.lower() or "RESOURCE_EXHAUSTED" in err_str:
+                    logger.warning("Rate limit hit on chunk %d (attempt %d/%d).", i + 1, attempt + 1, max_retries)
+                    
+                    # Try fallbacks
+                    fallback_success = False
+                    for fallback_name in _CANDIDATE_MODELS:
+                        if fallback_name == _MODEL_NAME:
+                            continue
+                        try:
+                            fallback = genai.GenerativeModel(fallback_name)
+                            response = fallback.generate_content([_SYSTEM_PROMPT, user_prompt])
+                            translated_chunks.append(response.text.strip())
+                            logger.info("Fallback model %s succeeded for chunk %d.", fallback_name, i + 1)
+                            fallback_success = True
+                            chunk_translated = True
+                            
+                            if progress_callback:
+                                progress = int(((i + 1) / len(chunks)) * 100)
+                                progress_callback(progress)
+                            
+                            if i < len(chunks) - 1:
+                                time.sleep(5)
+                            break
+                        except Exception as fb_exc:
+                            logger.warning("Fallback %s failed: %s", fallback_name, str(fb_exc)[:80])
+                            
+                    if fallback_success:
+                        break  # success, exit retry loop
+                        
+                    # If fallbacks also failed with rate limits, wait and retry
+                    wait_time = 60 * (attempt + 1)
+                    logger.info("All models rate limited. Sleeping for %d seconds before retry %d/%d...", wait_time, attempt + 1, max_retries)
+                    time.sleep(wait_time)
+                else:
+                    # Non-retryable error
+                    logger.error("AI translation API error on chunk %d: %s", i + 1, exc)
+                    raise RuntimeError(f"AI translation error: {exc}") from exc
+                    
+        if not chunk_translated:
             raise RuntimeError(
-                "The AI translation service has hit its rate limit. "
-                "Please wait ~60 seconds and try again, or check your quota at "
-                "https://ai.google.dev/gemini-api/docs/rate-limits"
-            ) from exc
-
-        logger.error("AI translation API error: %s", exc)
-        raise RuntimeError(f"AI translation error: {exc}") from exc
+                "The AI translation service has hit its rate limit and exhausted all retries. "
+                "Please wait a few minutes before submitting large documents."
+            )
+            
+    final_translation = "\n\n".join(translated_chunks)
+    logger.info(
+        "Translation complete via %s: %d chunks, %d chars -> %d chars",
+        _MODEL_NAME,
+        len(chunks),
+        len(text),
+        len(final_translation),
+    )
+    return final_translation
 
 
 def detect_language(text: str) -> str:
