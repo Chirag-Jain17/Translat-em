@@ -106,12 +106,14 @@ Rules you MUST follow without exception:
 4. Output ONLY the translated text. Do NOT include any preamble, commentary, notes, apologies, explanations, or the original source text.
 5. If the source language is set to "auto", detect the language automatically before translating.
 6. Proper nouns, brand names, and technical acronyms should remain unchanged unless a universally recognised target-language equivalent exists.
-7. If the source text contains [Dialogue N] labels (e.g. [Dialogue 1], [Dialogue 2]), these mark separate speech bubbles extracted from an image. You MUST keep each label in the output at the same position, translating only the text beneath each label. Never merge or reorder dialogues."""
+7. If the source text contains [Dialogue N] labels (e.g. [Dialogue 1], [Dialogue 2]), these mark separate speech bubbles extracted from an image. You MUST keep each label in the output at the same position, translating only the text beneath each label. Never merge or reorder dialogues.
+8. NEVER skip, omit, or summarize any part of the text. Every single sentence, paragraph, and page MUST be translated in its entirety.
+9. If the text contains page markers (e.g., '--- Page 17 ---'), you MUST preserve them exactly as they appear in the translated output."""
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def _chunk_text(text: str, max_chars: int = 10000) -> list[str]:
+def _chunk_text(text: str, max_chars: int = 2500) -> list[str]:
     """
     Split a large block of text into manageable chunks safely under `max_chars`.
     Attempts to split by double newlines (paragraphs), then single newlines, then spaces.
@@ -124,32 +126,12 @@ def _chunk_text(text: str, max_chars: int = 10000) -> list[str]:
     current_chunk = ""
     
     for p in paragraphs:
-        # If adding this paragraph exceeds the limit
+        # If adding this paragraph exceeds the limit and we already have content
         if len(current_chunk) + len(p) + 2 > max_chars and current_chunk:
             chunks.append(current_chunk.strip())
             current_chunk = ""
             
-        # If a single paragraph is STILL larger than max_chars, we must split it further
-        if len(p) > max_chars:
-            lines = p.split("\n")
-            for line in lines:
-                if len(current_chunk) + len(line) + 1 > max_chars and current_chunk:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = ""
-                    
-                if len(line) > max_chars:
-                    # Very long line with no newlines, split by space
-                    words = line.split(" ")
-                    for word in words:
-                        if len(current_chunk) + len(word) + 1 > max_chars and current_chunk:
-                            chunks.append(current_chunk.strip())
-                            current_chunk = ""
-                        current_chunk += word + " "
-                    current_chunk += "\n"
-                else:
-                    current_chunk += line + "\n"
-        else:
-            current_chunk += p + "\n\n"
+        current_chunk += p + "\n\n"
             
     if current_chunk.strip():
         chunks.append(current_chunk.strip())
@@ -203,7 +185,7 @@ def translate_text(
             f"Translate the following text from {source_language} into {target_language}."
         )
 
-    chunks = _chunk_text(text, max_chars=10000)
+    chunks = _chunk_text(text, max_chars=2500)
     translated_chunks = []
     
     for i, chunk in enumerate(chunks):
