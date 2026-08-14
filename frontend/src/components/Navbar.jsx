@@ -20,9 +20,9 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 const NAV_LINKS = [
-  { id: "home",    label: "Studio",  Icon: Languages },
-  { id: "explore", label: "Explore", Icon: Compass   },
-  { id: "profile", label: "Profile", Icon: User      },
+  { id: "home", label: "Studio", Icon: Languages },
+  { id: "explore", label: "Explore", Icon: Compass },
+  { id: "profile", label: "Profile", Icon: User },
 ];
 
 export default function Navbar({ currentPage, navigate }) {
@@ -62,7 +62,7 @@ export default function Navbar({ currentPage, navigate }) {
             </div>
             <div className="leading-none">
               <span className="font-serif font-bold text-slate-900 text-lg tracking-tight">
-                AI Translator
+                Translat-em
               </span>
               <span className="block text-[10px] text-slate-400 font-sans font-medium tracking-widest uppercase">
                 AI-Powered Translation
