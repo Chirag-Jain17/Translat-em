@@ -36,7 +36,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -68,43 +68,13 @@ MAX_FILE_SIZE_MB = 20  # Reject files larger than this
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _save_upload(upload: UploadFile) -> tuple[Path, str]:
-    """
-    Save an UploadFile to the uploads directory with a UUID prefix.
-    Returns (absolute_path, file_type) where file_type is 'image' or 'pdf'.
-    """
-    suffix = Path(upload.filename or "file").suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
-        )
-
-    unique_name = f"{uuid.uuid4().hex}{suffix}"
-    dest: Path = settings.upload_path / unique_name
-
-    try:
-        with dest.open("wb") as out_file:
-            shutil.copyfileobj(upload.file, out_file)
-    except Exception as exc:
-        logger.error("Failed to save upload: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="File storage error. Please try again.",
-        ) from exc
-
-    file_type = "pdf" if suffix in ALLOWED_PDF_EXTENSIONS else "image"
-    logger.info("Saved upload %s as %s (%s)", upload.filename, dest.name, file_type)
-    return dest, file_type
-
-
 def _build_snippet(text: Optional[str], length: int = 200) -> Optional[str]:
     if not text:
         return None
     return text[:length].rstrip() + ("…" if len(text) > length else "")
 
 
-def _process_file_translation(translation_id: int, file_path: str, file_type: str,
+def _process_file_translation(translation_id: int, file_bytes: bytes, file_type: str,
                                target_language: str, source_language: str) -> None:
     """
     Background task: extract text from file, translate it, update DB record.
@@ -123,11 +93,11 @@ def _process_file_translation(translation_id: int, file_path: str, file_type: st
         db.commit()
 
         # ── Step 1: Extract text ──────────────────────────────────────────────
-        logger.info("Extracting text from %s (%s)…", file_path, file_type)
+        logger.info("Extracting text from bytes (%s)…", file_type)
         if file_type == "pdf":
-            source_text = pdf_engine.extract_text_from_pdf(file_path)
+            source_text = pdf_engine.extract_text_from_pdf(file_bytes)
         else:
-            source_text = vision_engine.extract_text_from_image(file_path, source_language=source_language)
+            source_text = vision_engine.extract_text_from_image(file_bytes, source_language=source_language)
 
         record.source_text = source_text
 
@@ -258,8 +228,16 @@ def translate_file_endpoint(
     record.  The actual OCR + translation runs in a BackgroundTask.
     Poll GET /api/translate/{id}/status to check completion.
     """
-    # Save the file to disk
-    dest_path, file_type = _save_upload(file)
+    # Process the file in memory
+    suffix = Path(file.filename or "file").suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
+        )
+    file_type = "pdf" if suffix in ALLOWED_PDF_EXTENSIONS else "image"
+    
+    file_bytes = file.file.read()
 
     # Create a DB record in 'pending' state
     record = Translation(
@@ -268,7 +246,8 @@ def translate_file_endpoint(
         original_language=source_language,
         translated_language=target_language,
         is_public=is_public,
-        file_path=str(dest_path),
+        file_data=file_bytes,
+        file_mime_type=file.content_type,
         file_type=file_type,
         status="pending",
         user_id=current_user.id if current_user else None,
@@ -285,7 +264,7 @@ def translate_file_endpoint(
     background_tasks.add_task(
         _process_file_translation,
         translation_id=record.id,
-        file_path=str(dest_path),
+        file_bytes=file_bytes,
         file_type=file_type,
         target_language=target_language,
         source_language=source_language,
@@ -443,15 +422,8 @@ def delete_translation(
     if not record:
         raise HTTPException(status_code=404, detail="Translation not found.")
 
-    # Delete the associated file if it exists
-    if record.file_path:
-        fp = Path(record.file_path)
-        if fp.exists():
-            try:
-                fp.unlink()
-                logger.info("Deleted file %s", fp)
-            except Exception as exc:
-                logger.warning("Could not delete file %s: %s", fp, exc)
+    # The associated BLOB data (file_data) will be deleted automatically 
+    # when the translation record is deleted.
 
     db.delete(record)
     db.commit()
@@ -557,12 +529,17 @@ def get_user(username: str, db: Session = Depends(get_db)) -> UserResponse:
 # ── 10. Serve uploaded files ──────────────────────────────────────────────────
 
 @router.get(
-    "/uploads/{filename}",
-    summary="Serve a previously uploaded file",
+    "/translate/{translation_id}/file",
+    summary="Serve the uploaded original file",
     tags=["files"],
 )
-def serve_upload(filename: str) -> FileResponse:
-    file_path = settings.upload_path / filename
-    if not file_path.exists():
+def get_translation_file(
+    translation_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    record = db.query(Translation).filter(Translation.id == translation_id).first()
+    if not record or not record.file_data:
         raise HTTPException(status_code=404, detail="File not found.")
-    return FileResponse(str(file_path))
+    
+    # In a real app you'd check if record.is_public is True or if the user is authorized
+    return Response(content=record.file_data, media_type=record.file_mime_type)

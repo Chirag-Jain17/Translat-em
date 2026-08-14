@@ -13,6 +13,7 @@ source language passed in from the translation request.
 """
 
 import logging
+import io
 from pathlib import Path
 from typing import Optional
 
@@ -145,13 +146,13 @@ except ImportError:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def extract_text_from_image(image_path: str, source_language: str = "auto") -> str:
+def extract_text_from_image(image_bytes: bytes, source_language: str = "auto") -> str:
     """
-    Extract all text from the image file at *image_path* using OCR.
+    Extract all text from the image byte stream using OCR.
 
     Parameters
     ----------
-    image_path      : Absolute or relative path to the image file.
+    image_bytes     : Raw bytes of the image file.
     source_language : BCP-47 code or language name of the text in the image
                       (e.g. 'ja', 'japanese', 'zh', 'en', 'auto').
                       Used to select the correct OCR model.
@@ -163,20 +164,19 @@ def extract_text_from_image(image_path: str, source_language: str = "auto") -> s
       3. pytesseract.
       4. Descriptive error string — never raises.
     """
-    path = Path(image_path)
-    if not path.exists():
-        logger.error("Image file not found: %s", image_path)
-        return f"[ERROR] Image file not found: {image_path}"
+    if not image_bytes:
+        logger.error("Empty image bytes received.")
+        return "[ERROR] Empty image file received."
 
     paddle_lang = _source_to_paddle_lang(source_language)
     logger.info(
-        "OCR for '%s': source_language='%s' -> paddle_lang='%s'",
-        path.name, source_language, paddle_lang,
+        "OCR: source_language='%s' -> paddle_lang='%s'",
+        source_language, paddle_lang,
     )
 
     # ── Attempt 1: PaddleOCR with correct language model ─────────────────────
     if _PADDLE_AVAILABLE:
-        extracted = _run_paddle_ocr(path, paddle_lang)
+        extracted = _run_paddle_ocr(image_bytes, paddle_lang)
         if extracted:
             return extracted
 
@@ -184,33 +184,32 @@ def extract_text_from_image(image_path: str, source_language: str = "auto") -> s
         # Japanese and Korean reasonably well as a second pass)
         if paddle_lang not in ("ch", "en"):
             logger.info("Primary OCR model returned nothing — trying 'ch' fallback.")
-            extracted = _run_paddle_ocr(path, "ch")
+            extracted = _run_paddle_ocr(image_bytes, "ch")
             if extracted:
                 return extracted
 
     # ── Attempt 2: pytesseract ────────────────────────────────────────────────
     if _TESSERACT_AVAILABLE:
         try:
-            img = Image.open(str(path))
+            img = Image.open(io.BytesIO(image_bytes))
             if img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
             text = pytesseract.image_to_string(img, timeout=30).strip()
             if text:
-                logger.info("pytesseract extracted %d chars from %s", len(text), path.name)
+                logger.info("pytesseract extracted %d chars", len(text))
                 return text
-            logger.warning("pytesseract returned empty text for %s", path.name)
+            logger.warning("pytesseract returned empty text")
         except Exception as exc:
-            logger.warning("pytesseract failed for %s: %s", path.name, exc)
+            logger.warning("pytesseract failed: %s", exc)
 
     # ── Attempt 3: Graceful degradation ──────────────────────────────────────
-    logger.error("All OCR engines failed for %s.", path.name)
+    logger.error("All OCR engines failed.")
     return (
         "[OCR UNAVAILABLE] The image was uploaded successfully, but no OCR engine "
         "could extract text from it. To enable image translation:\n"
         "  • Install PaddleOCR:  pip install paddleocr paddlepaddle\n"
         "  • Or install Tesseract: https://github.com/UB-Mannheim/tesseract/wiki\n"
-        "    Then: pip install pytesseract\n\n"
-        f"File: {path.name}"
+        "    Then: pip install pytesseract\n"
     )
 
 
@@ -279,30 +278,35 @@ def _group_by_bubble(ocr_page: list) -> str:
     return "\n\n".join(parts)
 
 
-def _run_paddle_ocr(path: Path, paddle_lang: str) -> str:
-    """Run PaddleOCR for *paddle_lang* on *path*. Returns extracted text or ''."""
+def _run_paddle_ocr(image_bytes: bytes, paddle_lang: str) -> str:
+    """Run PaddleOCR for *paddle_lang* on *image_bytes*. Returns extracted text or ''."""
     ocr = _get_paddle_ocr(paddle_lang)
     if ocr is None:
         return ""
     try:
-        result = ocr.ocr(str(path), cls=True)
+        import numpy as np
+        import cv2
+        img_array = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+        result = ocr.ocr(img, cls=True)
         if not result or not result[0]:
-            logger.warning("PaddleOCR (lang=%s) returned empty result for %s", paddle_lang, path.name)
+            logger.warning("PaddleOCR (lang=%s) returned empty result", paddle_lang)
             return ""
 
         extracted = _group_by_bubble(result[0])
         if extracted.strip():
             bubble_count = extracted.count("[Dialogue")
             logger.info(
-                "PaddleOCR (lang=%s) extracted %d dialogue(s) from %s",
-                paddle_lang, max(bubble_count, 1), path.name,
+                "PaddleOCR (lang=%s) extracted %d dialogue(s)",
+                paddle_lang, max(bubble_count, 1),
             )
             return extracted
 
-        logger.warning("PaddleOCR (lang=%s) returned empty result for %s", paddle_lang, path.name)
+        logger.warning("PaddleOCR (lang=%s) returned empty result", paddle_lang)
         return ""
     except Exception as exc:
-        logger.warning("PaddleOCR (lang=%s) failed for %s: %s", paddle_lang, path.name, exc)
+        logger.warning("PaddleOCR (lang=%s) failed: %s", paddle_lang, exc)
         return ""
 
 

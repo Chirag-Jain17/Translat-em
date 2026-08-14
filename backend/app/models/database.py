@@ -14,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     Text,
     ForeignKey,
+    LargeBinary,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -66,7 +67,8 @@ class Translation(Base):
     view_count = Column(Integer, default=0, nullable=False)
 
     # Storage
-    file_path = Column(String(512), nullable=True)   # Path to the uploaded source file
+    file_data = Column(LargeBinary, nullable=True)   # Raw binary file data
+    file_mime_type = Column(String(128), nullable=True) # Exact MIME type
     file_type = Column(String(32), nullable=True)    # "text" | "image" | "pdf"
 
     # Content
