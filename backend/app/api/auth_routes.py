@@ -213,13 +213,15 @@ def register_google(payload: GoogleRegisterRequest, db: Session = Depends(get_db
         idinfo = id_token.verify_oauth2_token(
             payload.google_token, 
             google_requests.Request(), 
-            settings.GOOGLE_CLIENT_ID
+            settings.GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10
         )
         email = idinfo["email"].lower()
-    except ValueError:
+    except ValueError as e:
+        logger.error(f"Google token verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google token.",
+            detail=f"Invalid Google token: {str(e)}",
         )
 
     # Check username uniqueness
@@ -268,13 +270,15 @@ def login_google(payload: GoogleLoginRequest, db: Session = Depends(get_db)) -> 
         idinfo = id_token.verify_oauth2_token(
             payload.google_token, 
             google_requests.Request(), 
-            settings.GOOGLE_CLIENT_ID
+            settings.GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10
         )
         email = idinfo["email"].lower()
-    except ValueError:
+    except ValueError as e:
+        logger.error(f"Google token verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google token.",
+            detail=f"Invalid Google token: {str(e)}",
         )
 
     user = db.query(User).filter(User.email == email).first()

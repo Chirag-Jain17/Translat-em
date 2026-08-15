@@ -23,7 +23,6 @@ from app.core.config import settings
 # ── Engine & Session ─────────────────────────────────────────────────────────
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite + FastAPI
     echo=False,
 )
 

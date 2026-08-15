@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
 
     # ── Database ─────────────────────────────────────────────────────────────
-    DATABASE_URL: str = "sqlite:///./website.db"
+    DATABASE_URL: str = "postgresql://user:password@localhost:5432/dbname"
 
     # ── Server ───────────────────────────────────────────────────────────────
     BACKEND_HOST: str = "0.0.0.0"
