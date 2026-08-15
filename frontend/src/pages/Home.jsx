@@ -733,10 +733,30 @@ The AI will preserve paragraph breaks, bullet points, headings, and all formatti
                 </div>
                 {result.source_text && <CopyButton text={result.source_text} />}
               </div>
-              <pre className="flex-1 min-h-[200px] max-h-[500px] overflow-y-auto px-4 py-3
-                              text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-sans">
-                {result.source_text || "(No source text recorded)"}
-              </pre>
+              {result.file_type === "image" ? (
+                <div className="w-full flex-1 min-h-[200px] max-h-[500px] bg-slate-50 flex items-center justify-center overflow-hidden p-2 rounded-b-xl">
+                  <img
+                    src={`${API_BASE_URL}/api/translate/${result.id}/file`}
+                    className="w-full h-full object-contain"
+                    alt="Original"
+                  />
+                </div>
+              ) : result.file_type === "pdf" ? (
+                <div className="w-full flex-1 min-h-[200px] max-h-[500px] bg-slate-50 overflow-hidden rounded-b-xl">
+                  <object
+                    data={`${API_BASE_URL}/api/translate/${result.id}/file`}
+                    type="application/pdf"
+                    className="w-full h-full"
+                  >
+                    <p className="p-4 text-sm text-slate-500">PDF cannot be displayed. <a href={`${API_BASE_URL}/api/translate/${result.id}/file`} className="text-indigo-600 hover:underline">Download it here</a>.</p>
+                  </object>
+                </div>
+              ) : (
+                <pre className="flex-1 min-h-[200px] max-h-[500px] overflow-y-auto px-4 py-3
+                                text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-sans">
+                  {result.source_text || "(No source text recorded)"}
+                </pre>
+              )}
             </div>
 
             {/* Translation */}

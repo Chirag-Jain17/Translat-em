@@ -8,7 +8,7 @@ A full-stack, AI-powered translation web application built with **FastAPI** and 
 ![Tech Stack](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)
 ![Tech Stack](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB?style=flat-square&logo=react)
 ![Tech Stack](https://img.shields.io/badge/AI-Advanced%20LLM-4285F4?style=flat-square&logo=google)
-![Tech Stack](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite)
+![Tech Stack](https://img.shields.io/badge/Database-PostgreSQL%20(Supabase)-336791?style=flat-square&logo=postgresql)
 ![Tech Stack](https://img.shields.io/badge/Styling-Tailwind%20CSS-38BDF8?style=flat-square&logo=tailwindcss)
 
 ---
@@ -21,7 +21,7 @@ A full-stack, AI-powered translation web application built with **FastAPI** and 
 | **PDF Translation** | Upload a PDF — the app extracts the text and translates it |
 | **Image / OCR Translation** | Upload an image with text — OCR extracts it before translating |
 | **Auto Language Detection** | Leave source set to "auto" and the AI detects the language |
-| **Google OAuth Login** | Secure, 1-click sign-up and authentication using Google accounts |
+| **User Authentication** | Secure email/password login with JWT and Google OAuth support |
 | **Public Explore Feed** | Browse publicly shared translations with search, filter, and sort |
 | **User Profiles** | Personal translation history dashboard with usage stats and account deletion |
 | **Visibility Toggle** | Make any translation public or keep it private |
@@ -37,14 +37,13 @@ A full-stack, AI-powered translation web application built with **FastAPI** and 
 |---|---|---|
 | **FastAPI** | 0.111.1 | REST API framework |
 | **Uvicorn** | 0.30.1 | ASGI server |
-| **SQLAlchemy** | 2.0.31 | ORM + SQLite database |
+| **SQLAlchemy** | 2.0.31 | ORM + PostgreSQL database |
 | **Pydantic / pydantic-settings** | 2.8.2 / 2.3.4 | Data validation + `.env` loading |
 | **google-generativeai** | 0.7.2 | AI language model API client |
 | **PyMuPDF** | 1.24.7 | PDF text extraction |
 | **PaddleOCR** *(optional)* | 2.8.x | Primary OCR engine for images |
 | **Pytesseract** *(optional)* | — | Fallback OCR engine |
 | **python-multipart** | 0.0.9 | File upload handling |
-| **aiofiles** | 23.2.1 | Async file I/O |
 
 ### Frontend
 | Package | Version | Purpose |
@@ -75,7 +74,8 @@ Translator_App/
 │       ├── __init__.py
 │       │
 │       ├── api/
-│       │   └── routes.py         ← All REST endpoints (translate, explore, profile, users)
+│       │   ├── routes.py         ← Main REST endpoints (translate, explore, profile)
+│       │   └── auth_routes.py    ← Authentication endpoints (login, register, JWT)
 │       │
 │       ├── core/
 │       │   └── config.py         ← Settings loaded from .env via pydantic-settings
@@ -102,20 +102,25 @@ Translator_App/
         ├── App.jsx               ← Root component + pure-state router
         ├── index.css             ← Full design system (tokens, cards, buttons, animations)
         │
+        ├── context/
+        │   └── AuthContext.jsx   ← Global authentication state
+        │
         ├── components/
-        │   └── Navbar.jsx        ← Sticky glassmorphism nav + mobile hamburger
+        │   ├── Navbar.jsx        ← Sticky glassmorphism nav + mobile hamburger
+        │   └── ReadMoreModal.jsx ← Modal for long translations
         │
         ├── pages/
         │   ├── Home.jsx          ← Translation Studio (text + file workspaces)
         │   ├── Explore.jsx       ← Public feed with search, filter, sort, pagination
-        │   └── Profile.jsx       ← User dashboard, history, visibility/delete controls
+        │   ├── Profile.jsx       ← User dashboard, history, visibility/delete controls
+        │   ├── Login.jsx         ← Email/password & Google login
+        │   └── Register.jsx      ← User registration
         │
         └── services/
             └── api.js            ← Centralised API client (all fetch calls live here)
 ```
 
 > **Auto-created at runtime** (not in git):
-> - `backend/website.db` — SQLite database
 > - `backend/uploads/` — Uploaded files directory
 
 ---
@@ -155,6 +160,7 @@ Open `.env` and replace the placeholder:
 
 ```env
 GEMINI_API_KEY=AIzaSy...your_actual_key_here
+DATABASE_URL=postgresql://user:password@your_supabase_db_url
 ```
 
 > **Where to get a key:** Go to [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) and click **"Create API key"** — it's free. The key starts with `AIza`. Do **not** paste an OAuth token.
@@ -273,9 +279,13 @@ Interactive docs (Swagger UI) are available at **[http://localhost:8000/docs](ht
 | `PATCH` | `/api/translate/{id}/visibility` | Toggle public/private |
 | `DELETE` | `/api/translate/{id}` | Delete a translation |
 | `GET` | `/api/explore` | List public translations (search, filter, sort, paginate) |
-| `POST` | `/api/users` | Create a user profile |
-| `GET` | `/api/users/{username}` | Get user info |
 | `GET` | `/api/profile/{username}` | Get profile with translation history |
+| `POST` | `/api/auth/register` | Register a new user |
+| `POST` | `/api/auth/login` | Login with username/email & password |
+| `POST` | `/api/auth/register/google` | Register with Google |
+| `POST` | `/api/auth/login/google` | Login with Google |
+| `GET` | `/api/auth/me` | Get currently authenticated user |
+| `DELETE`| `/api/auth/me` | Delete user account |
 
 ---
 

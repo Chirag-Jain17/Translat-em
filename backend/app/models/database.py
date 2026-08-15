@@ -1,7 +1,6 @@
 """
 backend/app/models/database.py
-SQLAlchemy ORM models and database engine/session setup for SQLite.
-The .db file is auto-created in the backend/ working directory on startup.
+SQLAlchemy ORM models and database engine/session setup for PostgreSQL.
 """
 
 import datetime

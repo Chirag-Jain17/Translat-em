@@ -5,8 +5,7 @@ FastAPI application factory.
 
 - Registers CORS middleware with explicit Vite dev-server origin
 - Mounts the API router under /api
-- Auto-creates SQLite tables on startup
-- Creates the uploads/ directory on startup
+- Auto-creates PostgreSQL tables on startup
 """
 
 import logging
@@ -15,7 +14,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.api.auth_routes import router as auth_router
@@ -37,11 +35,7 @@ async def lifespan(app: FastAPI):
     """Runs once at startup before the first request is handled."""
     logger.info("=== AI Translator API starting up ===")
 
-    # Ensure the uploads directory exists
-    uploads_dir = settings.upload_path
-    logger.info("Upload directory: %s", uploads_dir)
-
-    # Auto-create SQLite tables
+    # Auto-create PostgreSQL tables
     create_db_and_tables()
     logger.info("Database tables verified / created.")
 
@@ -78,11 +72,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ── Mount static uploads directory ───────────────────────────────────────────
-# This allows the frontend to reference uploaded images directly via URL.
-uploads_path = settings.upload_path
-app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
 
 # ── Register API router ───────────────────────────────────────────────────────
 app.include_router(router, prefix="/api")
