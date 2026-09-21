@@ -57,28 +57,28 @@ A full-stack, AI-powered translation web application built with **FastAPI** and 
 
 ```mermaid
 graph LR
-    subgraph Frontend [Frontend (React + Vite)]
-        UI[User Interface]
-        API_Client[API Client]
+    subgraph Frontend ["Frontend (React + Vite)"]
+        UI["User Interface"]
+        API_Client["API Client"]
     end
 
-    subgraph Backend [Backend (FastAPI + Uvicorn)]
-        Router[API Routes]
-        BackgroundTasks[Background Tasks]
+    subgraph Backend ["Backend (FastAPI + Uvicorn)"]
+        Router["API Routes"]
+        BackgroundTasks["Background Tasks"]
         
-        subgraph Core Engines
-            LLM[LLM Engine]
-            PDF[PDF Engine]
-            Vision[Vision Engine]
+        subgraph CoreEngines ["Core Engines"]
+            LLM["LLM Engine"]
+            PDF["PDF Engine"]
+            Vision["Vision Engine"]
         end
     end
 
-    subgraph Storage
-        DB[(PostgreSQL)]
+    subgraph Storage ["Storage"]
+        DB[("PostgreSQL")]
     end
 
-    subgraph External
-        Gemini[Google Gemini API]
+    subgraph External ["External"]
+        Gemini["Google Gemini API"]
     end
 
     UI <--> API_Client
