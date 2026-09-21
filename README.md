@@ -56,6 +56,48 @@ A full-stack, AI-powered translation web application built with **FastAPI** and 
 
 ---
 
+## 🏗️ Architecture
+
+```mermaid
+graph LR
+    subgraph Frontend [Frontend (React + Vite)]
+        UI[User Interface]
+        API_Client[API Client]
+    end
+
+    subgraph Backend [Backend (FastAPI + Uvicorn)]
+        Router[API Routes]
+        BackgroundTasks[Background Tasks]
+        
+        subgraph Core Engines
+            LLM[LLM Engine]
+            PDF[PDF Engine]
+            Vision[Vision Engine]
+        end
+    end
+
+    subgraph Storage
+        DB[(PostgreSQL)]
+    end
+
+    subgraph External
+        Gemini[Google Gemini API]
+    end
+
+    UI <--> API_Client
+    API_Client <-->|REST HTTP| Router
+    Router <--> DB
+    Router -.->|Async Queue| BackgroundTasks
+    
+    BackgroundTasks --> LLM
+    BackgroundTasks --> PDF
+    BackgroundTasks --> Vision
+    
+    LLM <-->|Text Translation| Gemini
+```
+
+---
+
 ## 📁 Directory Structure
 
 ```
