@@ -1,6 +1,3 @@
-> [!WARNING]
-> **🚧 Work in Progress** — The frontend and backend are both built and functional, but the project is still being configured and tested. Some features may not work as expected. A stable release is coming soon.
-
 # 🌐 Translat-em: AI Translator Website
 
 A full-stack, AI-powered translation web application built with **FastAPI** and **React**. Translate plain text, documents (PDF), and images (OCR) into 100+ languages powered by a state-of-the-art large language model — all running locally on your machine.
@@ -119,9 +116,6 @@ Translator_App/
         └── services/
             └── api.js            ← Centralised API client (all fetch calls live here)
 ```
-
-> **Auto-created at runtime** (not in git):
-> - `backend/uploads/` — Uploaded files directory
 
 ---
 
